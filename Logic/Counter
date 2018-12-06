@@ -1,0 +1,123 @@
+-- 30.04.2018 18:16:02 AR V1.0a
+-- 30.09.2018 10:53:06 AR V1.0b asValue: output was not a number
+
+generic = {
+  parameter = {
+    length = 4,
+    asValue = false
+  },
+
+  refreshPins = function(self)
+    if self.parameter.asValue then
+      block.setOutputsPinCount(2)
+      block.setOutputPinName(1, 'zero')
+      block.setOutputPinTypeRestrains(1, 'boolean')
+      block.setOutputPinName(2, 'q')
+      block.setOutputPinTypeRestrains(2, 'number')
+    else
+      block.setOutputsPinCount(self.parameter.length + 1)
+      block.setOutputPinName(1, 'zero')
+      block.setOutputPinTypeRestrains(1, 'boolean')
+      for i = 1, self.parameter.length do
+        block.setOutputPinName(i + 1, 'q' .. i)
+        block.setOutputPinTypeRestrains(i + 1, 'boolean')
+      end
+    end
+  end,
+
+  init = function(self)
+    block.setInputsPinCount(2)
+    block.setInputPinName(1, 'a')
+    block.setInputPinTypeRestrains(1, 'boolean')
+    block.setInputPinName(2, 'clr')
+    block.setInputPinTypeRestrains(2, 'boolean')
+    block.setInputPinDefault(2, false)
+    self:refreshPins()
+    block.modifyFlags('SupressStopFunctionCall', true)
+  end,
+
+  open = function(self)
+    gui.add('Info', 'Info', 'Counter', 'Variable length counter')
+    local s = ''
+    for i = 2, 64 do
+      s = s .. i .. '\n'
+    end
+    gui.add('ComboBox', 'ComboBoxLength', 'Length of the register', s, {Width = 60})
+    gui.add('CheckBox', 'CheckBoxAsValue', 'Output as value')
+    gui.setEventHandler(
+      self,
+      'ComboBoxLength',
+      {
+        Click = function(self)
+          self.parameter.length = gui.get('ComboBoxLength') + 2
+          block.setOutputsPinCount(self.parameter.length + 1)
+          self:refreshPins()
+        end
+      }
+    )
+    gui.set('ComboBoxLength', self.parameter.length - 2)
+    gui.set('CheckBoxAsValue', 'Checked', self.parameter.asValue)
+    gui.setSize()
+  end,
+
+  apply = function(self)
+    self.parameter.asValue = gui.get('CheckBoxAsValue', 'Checked')
+    self:refreshPins()
+  end,
+
+  close = function()
+  end,
+
+  avatar = function(self)
+    return block.getDefaultAvatar(0, "'CNT'")
+  end,
+
+  generate = function(self)
+    local source =
+      [==[
+        local block = {}
+
+        block.start = function()
+          block.r = 0
+        end
+
+        block.step = function(a, clr)
+          if not block.a and a then
+            block.r = block.r + 1
+          end
+          block.a = a
+          if clr then
+            block.r = 0
+          end
+          block.r = block.r & MASK
+      ]==]
+    if self.parameter.asValue then
+      source = source .. [==[
+
+          return block.r == 0, block.r
+      ]==]
+    else
+      source = source .. [==[
+
+          local q = {}
+          for i = 1, LENGTH do
+            q[i] = (block.r & (1 << (i - 1))) ~= 0
+          end
+          return block.r == 0, table.unpack(q)
+      ]==]
+    end
+    source = source .. [==[
+
+        end
+
+        return block
+    ]==]
+    local replaces = {
+      ['LENGTH'] = self.parameter.length,
+      ['MASK'] = (1 << self.parameter.length) - 1
+    }
+    return string.gsub(source, '%a+', replaces)
+  end,
+
+}
+
